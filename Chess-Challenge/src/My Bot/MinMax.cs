@@ -1,10 +1,11 @@
-using ChessChallenge.API;
+﻿using ChessChallenge.API;
 using System;
 
 namespace ChessChallenge.Example
 {
-
-    public class EvilBot : IChessBot
+    // A simple bot that can spot mate in one, and always captures the most valuable piece it can.
+    // Plays randomly otherwise.
+    public class MinMaxBot : IChessBot
     {
         // Piece values: null, pawn, knight, bishop, rook, queen, king
         int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 };
@@ -63,15 +64,20 @@ namespace ChessChallenge.Example
             return BitboardHelper.GetNumberOfSetBits(squares_attacked);
         }
 
+        //     Console.WriteLine(squares_attacked);
+        //     return squares_attacked;
+        // }
+
         int evaluate(Board board)
         {
-            if (board.IsInCheckmate())
-            {
-                return board.IsWhiteToMove ? board.GameMoveHistory.Length -infinity : board.GameMoveHistory.Length +infinity;
-            }
             if (board.IsDraw())
             {
                 return 0;
+            }
+
+            if (board.IsInCheckmate())
+            {
+                return board.IsWhiteToMove ? -infinity : infinity;
             }
             // evaluate a positive score for the player who made the move
             int score = ((
@@ -99,7 +105,7 @@ namespace ChessChallenge.Example
 
 
             // number of squares attacked
-            score += (GetAttacks(board, true, board.AllPiecesBitboard) - GetAttacks(board, false, board.AllPiecesBitboard))*25;
+            // score += (GetAttacks(board, true, board.AllPiecesBitboard) - GetAttacks(board, false, board.AllPiecesBitboard))*25;
             score += (GetUniqueAttacks(board, true, board.AllPiecesBitboard) - GetUniqueAttacks(board, false, board.AllPiecesBitboard))*25;
 
 
@@ -108,13 +114,16 @@ namespace ChessChallenge.Example
                 return board.IsWhiteToMove ? 0 : -10;
             }
 
-            return score;
+            return score; //* (board.IsWhiteToMove ? -1 : 1);
 
         }
 
-        public int MinMax(Board board, int depth, int alpha, int beta, bool isMaximizingPlayer)
+        public int MinMax(Board board, int depth, bool isMaximizingPlayer)
         {
-            if (depth == 0 || board.IsInCheckmate()) return evaluate(board);
+            if (depth == 0 || board.IsInCheckmate())
+            {
+                return evaluate(board);
+            }
 
             int bestValue;
             if (isMaximizingPlayer)
@@ -123,12 +132,9 @@ namespace ChessChallenge.Example
                 foreach (Move move in board.GetLegalMoves())
                 {
                     board.MakeMove(move);
-                    int score = MinMax(board, depth - 1, alpha, beta, false);
+                    int score = MinMax(board, depth - 1, false);
                     board.UndoMove(move);
                     bestValue = Math.Max(bestValue, score);
-                    alpha = Math.Max(alpha, bestValue);
-                    if (beta <= alpha)
-                        break;
                 }
             }
             else
@@ -137,13 +143,10 @@ namespace ChessChallenge.Example
                 foreach (Move move in board.GetLegalMoves())
                 {
                     board.MakeMove(move);
-                    int score = MinMax(board, depth - 1, alpha, beta, true);
+                    int score = MinMax(board, depth - 1, true);
                     board.UndoMove(move);
 
                     bestValue = Math.Min(bestValue, score);
-                    beta = Math.Min(beta, bestValue);
-                    if (beta <= alpha)
-                        break;
                 }
             }
             return bestValue;
@@ -152,27 +155,20 @@ namespace ChessChallenge.Example
         public Move FirstMinMax(Board board, int depth, bool isMaximizingPlayer)
         {
             int bestValue;
-            int alpha = int.MinValue;
-            int beta = int.MaxValue;
-            Move[] moves = board.GetLegalMoves();
-            Move bestMove = moves[0];
+            Move bestMove = new Move();
             if (isMaximizingPlayer)
             {
                 bestValue = int.MinValue;
-                foreach (Move move in moves)
+                foreach (Move move in board.GetLegalMoves())
                 {
                     board.MakeMove(move);
-                    int score = MinMax(board, depth - 1, alpha, beta,  false);
-                    board.UndoMove(move);
-
+                    int score = MinMax(board, depth - 1, false);
                     if( score > bestValue)
                     {
                         bestValue = score;
                         bestMove = move;
                     }
-                    alpha = Math.Max(alpha, bestValue);
-                    if (beta <= alpha)
-                        break;
+                    board.UndoMove(move);
                 }
             }
             else
@@ -181,7 +177,7 @@ namespace ChessChallenge.Example
                 foreach (Move move in board.GetLegalMoves())
                 {
                     board.MakeMove(move);
-                    int score = MinMax(board, depth - 1, alpha, beta, true);
+                    int score = MinMax(board, depth - 1, true);
                     board.UndoMove(move);
 
                     if (score < bestValue)
@@ -189,9 +185,6 @@ namespace ChessChallenge.Example
                         bestValue = score;
                         bestMove = move;
                     }
-                    beta = Math.Min(beta, bestValue);
-                    if (beta <= alpha)
-                        break;
 
                 }
             }
