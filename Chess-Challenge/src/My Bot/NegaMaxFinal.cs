@@ -11,24 +11,14 @@ using System;
 // [ ] history heuristic
 // [ ] null move pruning
 
-public class TranspositionEntry
-{
-    public ulong Key { get; set; }
-    public int Depth { get; set; }
-    public int Score { get; set; }
-    public int Alpha { get; set; }
-    public int Beta { get; set; }
-}
 
-public class MyBot : IChessBot
+public class NegaMaxFinal : IChessBot
 {
     // Piece values: null, pawn, knight, bishop, rook, qumeen, king
     int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 };
     int infinity = 1000000000;
     int NodesSearched = 0;
     Move bestMove = new Move();
-    static int transpositionTableSize = 268435456;
-    TranspositionEntry[] transpositionTable = new TranspositionEntry[transpositionTableSize]; // 2^16
 
     int evaluate(Board board, int ply)
     {
@@ -87,58 +77,41 @@ public class MyBot : IChessBot
         return capPieceValue + promotionScore + enPassantScore - sacrificedPieceValue;
     }
 
-    public void StoreTransposition(Board board, int value, int depth, int alpha, int beta ){
-
-        int key = (int)board.ZobristKey & (transpositionTableSize-1);
-
-        if (transpositionTable[key] != null) {
-            Console.WriteLine($"Collision: old value {transpositionTable[key].Score}, new value {value}");
-        }
-
-        transpositionTable[key] = new TranspositionEntry{
-            Key = board.ZobristKey,
-            Depth = depth,
-            Score = value,
-            Alpha = alpha,
-            Beta = beta
-        };
-    }
-
     public int NegaMax(Board board, int ply, int depth, int alpha, int beta, bool maxPlayer)
     {
         // Evaluated a node
         NodesSearched++;
-        int score;
-        bool storeTransposition = true;
-
-        if (depth <=0 )
-        {
-            score = evaluate(board, ply);
-            StoreTransposition(board, score, depth, alpha, beta);
-            return score;
-        }
+        if (depth <=0 ) return evaluate(board, ply);
         Move[] moves = board.GetLegalMoves();
 
-        int alphaOrig = alpha;
         int bestValue = -infinity;
+        int score;
         Array.Sort(moves, (x, y) => RankMove(board, y).CompareTo(RankMove(board, x)));
         // Array.Sort(moves, (x, y) => CompareMove(board, y, x));
         foreach (Move move in moves)
         {
             board.MakeMove(move);
 
-            // transposition table
-            // This is wrong, we need to use the transpositionTable for sorting moves!!
-            TranspositionEntry entry = transpositionTable[(int)board.ZobristKey & (transpositionTableSize-1)];
-            if (entry != null && entry.Depth <= depth) {
-                Console.WriteLine($"Transposition hit: {entry.Score}");
-                storeTransposition = false;
-                score = entry.Score;
-            } else {
-                score = -NegaMax(board, ply+1, depth - 1, -beta, -alpha, !maxPlayer);
-            }
+            // if (board.IsInCheckmate())
+            // {
+            //     score = (ply -infinity) * (board.IsWhiteToMove ? 1 : -1);
+            //     if (ply == 1) bestMove = move;
+            //     board.UndoMove(move);
 
-            // score = -NegaMax(board, ply+1, depth - 1, -beta, -alpha, !maxPlayer);
+            //     alpha = Math.Max(alpha, score); // Update alpha with a high value
+            //     return alpha;
+
+            //     if (!maxPlayer)
+            //     {
+            //         beta = Math.Min(beta, score); // Update beta with a low value
+            //         return beta;
+            //     } else
+            //     {
+
+            //     }
+
+            // }
+            score = -NegaMax(board, ply+1, depth - 1, -beta, -alpha, !maxPlayer);
             board.UndoMove(move);
 
             // single call
@@ -147,14 +120,14 @@ public class MyBot : IChessBot
                 bestValue = score;
                 if (ply == 1) {
                     bestMove = move;
+                    // Console.WriteLine($"Best move {move} - {!board.IsWhiteToMove} - {score}");
                 }
             }
-
-            if (storeTransposition) StoreTransposition(board, bestValue, depth, alphaOrig, beta);
 
             // bestValue = Math.Max(bestValue, score);
             alpha = Math.Max(alpha, bestValue);
             if (beta <= alpha)
+                // Console.WriteLine($"CutOff  {depth+1}: {!board.IsWhiteToMove} - {score}: {board.GameMoveHistory }");
                 break;
         }
 
@@ -162,12 +135,36 @@ public class MyBot : IChessBot
     }
 
 
+    // public Move FindBestMove(Board board, Move[] moves, int depth, bool isWhite)
+    // {
+    //     // !! FIND THE BEST MOVE //
+    //     int bestValue = -infinity;
+    //     Move bestMove = moves[0];
+    //     foreach (Move move in board.GetLegalMoves())
+    //     {
+    //         board.MakeMove(move);
+    //         int score = -NegaMax(board, 1, depth - 1, -infinity + 1, infinity - 1, false);
+    //         board.UndoMove(move);
+
+    //         if (score > bestValue)
+    //         {
+    //             bestValue = score;
+    //             bestMove = move;
+    //         }
+    //     }
+
+    //     return bestMove;
+    // }
+
     public Move Think(Board board, Timer timer)
     {
         NodesSearched = 0;
-        // Array.Clear(transpositionTable);
         int initialAlpha = -infinity;
         int initialBeta = infinity;
+        // Move[] moves = board.GetLegalMoves();
+        // Array.Sort(moves, (x, y) => RankMove(board, y).CompareTo(RankMove(board, x)));
+        // Array.Sort(moves, (x, y) => CompareMove(board, x, y));
+
 
         // single call
         for (int depth = 1; depth <= 8; depth++)
@@ -178,10 +175,6 @@ public class MyBot : IChessBot
             if ((timer.MillisecondsElapsedThisTurn > (timer.GameStartTimeMilliseconds/200) || timer.MillisecondsElapsedThisTurn > (timer.MillisecondsRemaining / 10)))
             {
                 // Console.WriteLine("Time is up! - Visitied nodes: " + NodesSearched);
-                Console.WriteLine("Visitied nodes: " + NodesSearched);
-                Console.WriteLine("Best move: " + bestMove);
-                int transpositionCount = Array.FindAll(transpositionTable, c => c != null).Length;
-                Console.WriteLine($"{transpositionCount} transpositions stored, ({transpositionCount * 100 / transpositionTableSize}%)");
                 return bestMove;
             }
         }
@@ -194,7 +187,7 @@ public class MyBot : IChessBot
         // Depth: 4 Best move: Move: 'e1f2' - Visitied nodes: 556201
         // rb5/4r3/3p1npb/3kp1P1/1P3P1P/5nR1/2Q1BK2/bN4NR w - - 3 61 #1
         // r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 0 #2
-        Console.WriteLine("Visitied nodes: " + NodesSearched);
+
         return bestMove;
     }
 }
